@@ -11,9 +11,13 @@ import os
 
 
 def application(environ: dict, start_response):
-    for k, v in environ.items():
-        if k not in os.environ.keys():
-            print('{} => {}'.format(k, v))
+    qs = environ['QUERY_STRING']
+    print(qs)  # name=suncle&age=18
+    params = {}
+    for kv in qs.split('&'):
+        k, v = kv.split('=')
+        params[k] = v
+    print(params)
     status = '200 OK'  # HTTP Status
     response_headers = [('Content-type', 'text/plain')]  # HTTP Headers
     response_body = [b'hello world\n', b'I love you\n']
