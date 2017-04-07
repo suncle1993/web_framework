@@ -7,20 +7,16 @@ Created on 4/5/17 9:16 PM
 @file: app.py 
 @function: 实现通用的web框架
 """
-import os
+from urllib.parse import parse_qs
 
 
 def application(environ: dict, start_response):
     qs = environ['QUERY_STRING']
-    print(qs)  # name=suncle&age=18
-    params = {}
-    for kv in qs.split('&'):
-        k, v = kv.split('=')
-        params[k] = v
-    print(params)
+    params = parse_qs(qs)
+    name = params.get('name', ['default_name'])[0]
     status = '200 OK'  # HTTP Status
     response_headers = [('Content-type', 'text/plain')]  # HTTP Headers
-    response_body = [b'hello world\n', b'I love you\n']
+    response_body = ['hello {}'.format(name).encode()]
     start_response(status, response_headers)
     return response_body
 
