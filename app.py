@@ -7,9 +7,13 @@ Created on 4/5/17 9:16 PM
 @file: app.py 
 @function: 实现通用的web框架
 """
+import os
 
 
-def application(environ, start_response):
+def application(environ: dict, start_response):
+    for k, v in environ.items():
+        if k not in os.environ.keys():
+            print('{} => {}'.format(k, v))
     status = '200 OK'  # HTTP Status
     response_headers = [('Content-type', 'text/plain')]  # HTTP Headers
     response_body = [b'hello world\n', b'I love you\n']
