@@ -7,21 +7,18 @@ Created on 4/5/17 9:16 PM
 @file: app.py 
 @function: 实现通用的web框架
 """
-from urllib.parse import parse_qs
 import webob
+from webob.dec import wsgify
 
+@wsgify
+def application(request: webob.Request) -> webob.Response:
+    name = request.params.get('name', 'default_name')
 
-def application(environ: dict, start_response):
-    # 封装请求
-    request = webob.Request(environ)
-    name = request.params.get('name', 'default_name')  # 多个值时取最后一个
-
-    # 封装响应
     response = webob.Response()
     response.text = 'hello {}'.format(name)
     response.status_code = 200
     response.content_type = 'text/plain'
-    return response(environ, start_response)
+    return response
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
