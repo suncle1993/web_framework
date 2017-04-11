@@ -8,17 +8,20 @@ Created on 4/5/17 9:16 PM
 @function: 实现通用的web框架
 """
 from urllib.parse import parse_qs
+import webob
 
 
 def application(environ: dict, start_response):
-    qs = environ['QUERY_STRING']
-    params = parse_qs(qs)
-    name = params.get('name', ['default_name'])[0]
-    status = '200 OK'  # HTTP Status
-    response_headers = [('Content-type', 'text/plain')]  # HTTP Headers
-    response_body = ['hello {}'.format(name).encode()]
-    start_response(status, response_headers)
-    return response_body
+    # 封装请求
+    request = webob.Request(environ)
+    name = request.params.get('name', 'default_name')  # 多个值时取最后一个
+
+    # 封装响应
+    response = webob.Response()
+    response.text = 'hello {}'.format(name)
+    response.status_code = 200
+    response.content_type = 'text/plain'
+    return response(environ, start_response)
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
