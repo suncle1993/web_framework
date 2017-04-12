@@ -9,6 +9,7 @@ Created on 4/5/17 9:16 PM
 """
 from webob import Request, Response
 from webob.dec import wsgify
+from webob import exc
 
 
 def hello(request: Request) -> Response:
@@ -31,13 +32,12 @@ class Application:
     def register(cls, path, handler):
         cls.router[path] = handler
 
-    @staticmethod
-    def default_handler(request: Request) -> Response:
-        return Response(body='not found', status=404)
-
     @wsgify
     def __call__(self, request: Request) -> Response:
-        return self.router.get(request.path, self.default_handler)(request)
+        try:
+            return self.router[request.path](request)
+        except KeyError:
+            return exc.HTTPNotFound('{} not found'.format(request.path))
 
 
 if __name__ == '__main__':
