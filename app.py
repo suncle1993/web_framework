@@ -10,15 +10,17 @@ Created on 4/5/17 9:16 PM
 import webob
 from webob.dec import wsgify
 
+
 @wsgify
 def application(request: webob.Request) -> webob.Response:
-    name = request.params.get('name', 'default_name')
-
-    response = webob.Response()
-    response.text = 'hello {}'.format(name)
-    response.status_code = 200
-    response.content_type = 'text/plain'
-    return response
+    if request.path == '/hello':
+        name = request.params.get('name', 'default_name')
+        response = webob.Response()
+        response.text = 'hello {}'.format(name)
+        response.status_code = 200
+        response.content_type = 'text/plain'
+        return response
+    return webob.Response(body='hello world', status=200, content_type='text/plain')
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
