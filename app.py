@@ -7,20 +7,30 @@ Created on 4/5/17 9:16 PM
 @file: app.py 
 @function: 实现通用的web框架
 """
-import webob
+from webob import Request, Response
 from webob.dec import wsgify
 
 
+def hello(request: Request) -> Response:
+    name = request.params.get("name", 'default_name')
+    response = Response()
+    response.text = 'hello {}'.format(name)
+    response.status_code = 200
+    response.content_type = 'text/plain'
+    return response
+
+
+def root(request: Request) -> Response:
+    return Response(body='hello world', status=200, content_type='text/plain')
+
+router = {
+    '/hello': hello,
+    '/': root
+}
+
 @wsgify
-def application(request: webob.Request) -> webob.Response:
-    if request.path == '/hello':
-        name = request.params.get('name', 'default_name')
-        response = webob.Response()
-        response.text = 'hello {}'.format(name)
-        response.status_code = 200
-        response.content_type = 'text/plain'
-        return response
-    return webob.Response(body='hello world', status=200, content_type='text/plain')
+def application(request: Request) -> Response:
+    return router.get(request.path, root)(request)
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
