@@ -13,6 +13,28 @@ from webob import exc
 import re
 
 
+class _Vars:
+    """Accessing to the dictionary is converted to access to attributes"""
+    def __init__(self, data=None):
+        if data is None:
+            self._data = {}
+        else:
+            self._data = data
+
+    def __getattr__(self, item):
+        try:
+            return self._data[item]
+        except KeyError:
+            raise AttributeError('no attribute {}'.format(item))
+
+    def __setattr__(self, key, value):
+        """Attributes are not allowed to be assigned, except for self._data = data in __init__"""
+        if key != '_data':
+            print('Attributes are not allowed to be assigned'.format(key))
+            raise NotImplemented
+        self.__dict__['_data'] = value
+
+
 class Application:
     router = []
 
@@ -26,14 +48,18 @@ class Application:
     @wsgify
     def __call__(self, request: Request) -> Response:
         for pattern, handler in self.router:
-            if pattern.match(request.path):
+            m = pattern.match(request.path)
+            if m:
+                request.args = m.groups()  # tuple
+                request.kwargs = _Vars(m.groupdict())  # dict
                 return handler(request)
         raise exc.HTTPNotFound('not found')
 
 
-@Application.register('^/hello$')
+# 192.168.110.13:9000/hello/suncle: The path has parameter {'name': 'suncle'}
+@Application.register('^/hello/(?P<name>\w+)$')
 def hello(request: Request) -> Response:
-    name = request.params.get("name", 'default_name')
+    name = request.kwargs.name
     response = Response()
     response.text = 'hello {}'.format(name)
     response.status_code = 200
