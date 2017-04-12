@@ -10,27 +10,28 @@ Created on 4/5/17 9:16 PM
 from webob import Request, Response
 from webob.dec import wsgify
 from webob import exc
+import re
 
 
 class Application:
-    router = {}
+    router = []
 
     @classmethod
-    def register(cls, path):
+    def register(cls, pattern):
         def wrap(handler):
-            cls.router[path] = handler
+            cls.router.append((re.compile(pattern), handler))
             return handler
         return wrap
 
     @wsgify
     def __call__(self, request: Request) -> Response:
-        try:
-            return self.router[request.path](request)
-        except KeyError:
-            return exc.HTTPNotFound('{} not found'.format(request.path))
+        for pattern, handler in self.router:
+            if pattern.match(request.path):
+                return handler(request)
+        raise exc.HTTPNotFound('not found')
 
 
-@Application.register('/hello')
+@Application.register('^/hello$')
 def hello(request: Request) -> Response:
     name = request.params.get("name", 'default_name')
     response = Response()
@@ -40,7 +41,7 @@ def hello(request: Request) -> Response:
     return response
 
 
-@Application.register('/')
+@Application.register('^/$')
 def root(request: Request) -> Response:
     return Response(body='hello world', status=200, content_type='text/plain')
 
