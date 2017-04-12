@@ -23,19 +23,29 @@ def hello(request: Request) -> Response:
 def root(request: Request) -> Response:
     return Response(body='hello world', status=200, content_type='text/plain')
 
-router = {
-    '/hello': hello,
-    '/': root
-}
 
-@wsgify
-def application(request: Request) -> Response:
-    return router.get(request.path, root)(request)
+class Application:
+    router = {}
+
+    @classmethod
+    def register(cls, path, handler):
+        cls.router[path] = handler
+
+    @staticmethod
+    def default_handler(request: Request) -> Response:
+        return Response(body='not found', status=404)
+
+    @wsgify
+    def __call__(self, request: Request) -> Response:
+        return self.router.get(request.path, self.default_handler)(request)
+
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
 
-    server = make_server('0.0.0.0', 9000, application)
+    Application.register('/hello', hello)
+    Application.register('/', root)
+    server = make_server('0.0.0.0', 9000, Application())
     try:
         print('Serving on port 9000...')
         server.serve_forever()
