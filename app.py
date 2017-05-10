@@ -39,15 +39,44 @@ class Application:
     router = []
 
     @classmethod
-    def register(cls, pattern):
+    def route(cls, methods, pattern):
         def wrap(handler):
-            cls.router.append((re.compile(pattern), handler))
+            cls.router.append((methods, re.compile(pattern), handler))
             return handler
         return wrap
 
+    @classmethod
+    def get(cls, pattern):
+        return cls.route('GET', pattern)
+
+    @classmethod
+    def post(cls, pattern):
+        return cls.route('POST', pattern)
+
+    @classmethod
+    def put(cls, pattern):
+        return cls.route('PUT', pattern)
+
+    @classmethod
+    def delete(cls, pattern):
+        return cls.route('DELETE', pattern)
+
+    @classmethod
+    def head(cls, pattern):
+        return cls.route('HEAD', pattern)
+
+    @classmethod
+    def options(cls, pattern):
+        return cls.route('OPTIONS', pattern)
+
     @wsgify
     def __call__(self, request: Request) -> Response:
-        for pattern, handler in self.router:
+        for methods, pattern, handler in self.router:
+            if methods:
+                if isinstance(methods, (list, tuple, set)) and request.method  not in methods:
+                    continue
+                if isinstance(methods, str) and request.method != methods:
+                    continue
             m = pattern.match(request.path)
             if m:
                 request.args = m.groups()  # tuple
@@ -57,7 +86,7 @@ class Application:
 
 
 # 192.168.110.13:9000/hello/suncle: The path has parameter {'name': 'suncle'}
-@Application.register('^/hello/(?P<name>\w+)$')
+@Application.get('^/hello/(?P<name>\w+)$')
 def hello(request: Request) -> Response:
     name = request.kwargs.name
     response = Response()
@@ -67,7 +96,7 @@ def hello(request: Request) -> Response:
     return response
 
 
-@Application.register('^/$')
+@Application.route(['GET', 'POST'], '^/$')
 def root(request: Request) -> Response:
     return Response(body='hello world', status=200, content_type='text/plain')
 
