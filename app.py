@@ -35,70 +35,80 @@ class _Vars:
         self.__dict__['_data'] = value
 
 
-class Application:
-    router = []
+class Router:
+    def __init__(self, prefix=''):
+        self._prefix = prefix.rstrip('/')
+        self._routes = []
 
-    @classmethod
-    def route(cls, methods, pattern):
+    @property
+    def prefix(self):
+        return self._prefix
+
+    def route(self, pattern='.*', methods=None):
         def wrap(handler):
-            cls.router.append((methods, re.compile(pattern), handler))
+            self._routes.append((methods, re.compile(pattern), handler))
             return handler
         return wrap
 
-    @classmethod
-    def get(cls, pattern):
-        return cls.route('GET', pattern)
+    def get(self, pattern='.*'):
+        return self.route(pattern, 'GET')
 
-    @classmethod
-    def post(cls, pattern):
-        return cls.route('POST', pattern)
+    def put(self, pattern='.*'):
+        return self.route(pattern, 'PUT')
 
-    @classmethod
-    def put(cls, pattern):
-        return cls.route('PUT', pattern)
+    def post(self, pattern='.*'):
+        return self.route(pattern, 'POST')
 
-    @classmethod
-    def delete(cls, pattern):
-        return cls.route('DELETE', pattern)
+    def delete(self, pattern='.*'):
+        return self.route(pattern, 'DELETE')
 
-    @classmethod
-    def head(cls, pattern):
-        return cls.route('HEAD', pattern)
+    def patch(self, pattern='.*'):
+        return self.route(pattern, 'PATCH')
 
-    @classmethod
-    def options(cls, pattern):
-        return cls.route('OPTIONS', pattern)
+    def head(self, pattern='.*'):
+        return self.route(pattern, 'HEAD')
 
-    @wsgify
-    def __call__(self, request: Request) -> Response:
-        for methods, pattern, handler in self.router:
+    def options(self, pattern='.*'):
+        return self.route(pattern, 'OPTIONS')
+
+    def run(self, request: Request):
+        if not request.path.startswith(self.prefix):
+            return
+        for methods, pattern, handler in self._routes:
             if methods:
                 if isinstance(methods, (list, tuple, set)) and request.method  not in methods:
                     continue
                 if isinstance(methods, str) and request.method != methods:
                     continue
-            m = pattern.match(request.path)
+            m = pattern.match(request.path.replace(self._prefix, '', 1))
             if m:
                 request.args = m.groups()  # tuple
                 request.kwargs = _Vars(m.groupdict())  # dict
                 return handler(request)
+
+class Application:
+    ROUTERS = []
+
+    @classmethod
+    def register(cls, router: Router):
+        cls.ROUTERS.append(router)
+
+    @wsgify
+    def __call__(self, request: Request) -> Response:
+        for router in self.ROUTERS:
+            response = router.run(request)
+            if response:
+                return response
         raise exc.HTTPNotFound('not found')
 
-
-# 192.168.110.13:9000/hello/suncle: The path has parameter {'name': 'suncle'}
-@Application.get('^/hello/(?P<name>\w+)$')
-def hello(request: Request) -> Response:
-    name = request.kwargs.name
-    response = Response()
-    response.text = 'hello {}'.format(name)
-    response.status_code = 200
-    response.content_type = 'text/plain'
-    return response
+tv = Router('/tv')
 
 
-@Application.route(['GET', 'POST'], '^/$')
-def root(request: Request) -> Response:
-    return Response(body='hello world', status=200, content_type='text/plain')
+@tv.get(r'^/(?P<id>\d+)$')
+def get_tv(request: Request) -> Response:
+    return Response(body='tv {}'.format(request.kwargs.id), content_type='text/plain')
+
+Application.register(router=tv)
 
 if __name__ == '__main__':
     from wsgiref.simple_server import make_server
