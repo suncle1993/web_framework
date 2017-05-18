@@ -13,6 +13,24 @@ from webob import exc
 import re
 
 
+# converted to re
+PATTERNS = {
+    'str': r'[^/]+',
+    'word': r'\w+',
+    'int': r'[+-]?\d+',
+    'float': r'[+-]?\d+\.\d+',
+    'any': r'.+'
+}
+
+TRANSLATORS = {
+    'str': str,
+    'word': str,
+    'any': str,
+    'int': int,
+    'float': float
+}
+
+
 class _Vars:
     """Accessing to the dictionary is converted to access to attributes"""
     def __init__(self, data=None):
@@ -35,7 +53,35 @@ class _Vars:
         self.__dict__['_data'] = value
 
 
+class Route:
+    """A Route is a concrete match, containing pattern, translator, methods and handler"""
+    __slots__ = ['methods', 'pattern', 'translator', 'handler']
+
+    def __init__(self, pattern, translator, methods, handler):
+        self.pattern = re.compile(pattern)
+        if translator is None:
+            translator = {}
+        self.translator = translator
+        self.methods = methods
+        self.handler = handler
+
+    def run(self, prefix: str, request: Request):
+        if self.methods:
+            if isinstance(self.methods, (list, tuple, set)) and request.method not in self.methods:
+                return
+            if isinstance(self.methods, str) and request.method != self.methods:
+                return
+        m = self.pattern.match(request.path.replace(prefix, '', 1))
+        if m:
+            vs = {}
+            for k, v in m.groupdict().items():
+                vs[k] = self.translator[k](v)
+            request.vars = _Vars(vs)
+            return self.handler(request)
+
+
 class Router:
+    """A Router contain multiple Route, storing in _routes. All Route in a Router has a specified prefix"""
     def __init__(self, prefix=''):
         self._prefix = prefix.rstrip('/')
         self._routes = []
@@ -44,9 +90,42 @@ class Router:
     def prefix(self):
         return self._prefix
 
-    def route(self, pattern='.*', methods=None):
+    def _rule_parse(self, rule: str, methods, handler) -> Route:
+        pattern = ['^']
+        spec = []
+        translator = {}
+        # /home/{name:str}/{id:int}
+        is_spec = False
+        for c in rule:
+            if c == '{':
+                is_spec = True
+            elif c == '}':
+                is_spec = False
+                name, pat, t = self._spec_parse(''.join(spec))
+                pattern.append(pat)
+                translator[name] = t
+                spec.clear()
+            elif is_spec:
+                spec.append(c)
+            else:
+                pattern.append(c)
+        pattern.append('$')
+        return Route(''.join(pattern), translator, methods, handler)
+
+    @staticmethod
+    def _spec_parse(spec: str):
+        name, _, type_of_name = spec.partition(':')
+        if not name.isidentifier():
+            raise Exception('name {} is not identifier'.format(name))
+        if type_of_name not in PATTERNS.keys():
+            type_of_name = 'word'
+        pattern = '(?P<{}>{})'.format(name, PATTERNS[type_of_name])
+        return name, pattern, TRANSLATORS[type_of_name]
+
+    def route(self, rule, methods=None):
         def wrap(handler):
-            self._routes.append((methods, re.compile(pattern), handler))
+            route = self._rule_parse(rule, methods, handler)
+            self._routes.append(route)
             return handler
         return wrap
 
@@ -74,19 +153,14 @@ class Router:
     def run(self, request: Request):
         if not request.path.startswith(self.prefix):
             return
-        for methods, pattern, handler in self._routes:
-            if methods:
-                if isinstance(methods, (list, tuple, set)) and request.method  not in methods:
-                    continue
-                if isinstance(methods, str) and request.method != methods:
-                    continue
-            m = pattern.match(request.path.replace(self._prefix, '', 1))
-            if m:
-                request.args = m.groups()  # tuple
-                request.kwargs = _Vars(m.groupdict())  # dict
-                return handler(request)
+        for route in self._routes:
+            res = route.run(self.prefix, request)
+            if res:
+                return res
+
 
 class Application:
+    """A Application contain multiple Router. Each Router represents a prefix"""
     ROUTERS = []
 
     @classmethod
@@ -104,9 +178,9 @@ class Application:
 tv = Router('/tv')
 
 
-@tv.get(r'^/(?P<id>\d+)$')
+@tv.get('/{id:int}')
 def get_tv(request: Request) -> Response:
-    return Response(body='tv {}'.format(request.kwargs.id), content_type='text/plain')
+    return Response(body='tv {}'.format(request.vars.id), content_type='text/plain')
 
 Application.register(router=tv)
 
