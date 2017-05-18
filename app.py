@@ -11,6 +11,7 @@ from webob import Request, Response
 from webob.dec import wsgify
 from webob import exc
 import re
+from context import Context, AppContext, RouterContext
 
 
 # converted to re
@@ -65,7 +66,7 @@ class Route:
         self.methods = methods
         self.handler = handler
 
-    def run(self, prefix: str, request: Request):
+    def run(self, prefix: str, ctx: Context, request: Request):
         if self.methods:
             if isinstance(self.methods, (list, tuple, set)) and request.method not in self.methods:
                 return
@@ -77,17 +78,25 @@ class Route:
             for k, v in m.groupdict().items():
                 vs[k] = self.translator[k](v)
             request.vars = _Vars(vs)
-            return self.handler(request)
+            return self.handler(ctx, request)
 
 
 class Router:
     """A Router contain multiple Route, storing in _routes. All Route in a Router has a specified prefix"""
-    def __init__(self, prefix=''):
+    def __init__(self, prefix='', **kwargs):
         self._prefix = prefix.rstrip('/')
         self._routes = []
 
         self.before_filters = []
         self.after_filters = []
+
+        self.ctx = RouterContext(kwargs)
+
+    def context(self, ctx=None):
+        if ctx:
+            self.ctx.with_app(ctx)
+        self.ctx.router = self
+        return self.ctx
 
     @property
     def prefix(self):
@@ -165,12 +174,12 @@ class Router:
         if not request.path.startswith(self.prefix):
             return
         for fn in self.before_filters:
-            request = fn(self, request)
+            request = fn(self.ctx, request)
         for route in self._routes:
-            res = route.run(self.prefix, request)
+            res = route.run(self.prefix, self.ctx, request)
             if res:
                 for fn in self.after_filters:
-                    res = fn(self, request, res)
+                    res = fn(self.ctx, request, res)
                 return res
 
 
@@ -180,8 +189,20 @@ class Application:
     before_filters = []
     after_filters = []
 
+    ctx = AppContext()
+
+    def __init__(self, **kwargs):
+        self.ctx.app = self
+        for k, v in kwargs.items():
+            self.ctx[k] = v
+
+    @classmethod
+    def add_extension(cls, name, extension):
+        cls.ctx[name] = extension
+
     @classmethod
     def register(cls, router: Router):
+        router.context(cls.ctx)
         cls.ROUTERS.append(router)
 
     @classmethod
@@ -197,12 +218,12 @@ class Application:
     @wsgify
     def __call__(self, request: Request) -> Response:
         for fn in self.before_filters:
-            request = fn(self, request)  # self is an instance of current Application
+            request = fn(self.ctx, request)  # self is an instance of current Application
         for router in self.ROUTERS:
             response = router.run(request)
             if response:
                 for fn in self.after_filters:
-                    response = fn(self, request, response)
+                    response = fn(self.ctx, request, response)
                 return response
         raise exc.HTTPNotFound('not found')
 
@@ -210,18 +231,19 @@ tv = Router('/tv')
 
 
 @tv.get('/{id:int}')
-def get_tv(request: Request) -> Response:
+def get_tv(ctx: Context, request: Request) -> Response:
     return Response(body='tv {}'.format(request.vars.id), content_type='text/plain')
 
 
 @Application.before_request
-def print_headers(instance, request: Request):
+def print_headers(ctx, request: Request):
     for k in request.headers.keys():
         print('{} => {}'.format(k, request.headers[k]))
     return request
 
+
 @tv.before_request
-def print_level(instance, request: Request):
+def print_level(ctx, request: Request):
     print('Router-level filtering')
     return request
 
